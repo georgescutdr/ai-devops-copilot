@@ -1,0 +1,76 @@
+# =====================
+# Node / NestJS
+# =====================
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# =====================
+# Python / ai-engine
+# =====================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+*.venv/
+env/
+venv/
+pip-log.txt
+*.pytest_cache/
+*.mypy_cache/
+*.coverage
+*.egg-info/
+
+# =====================
+# Docker
+# =====================
+docker-compose.override.yml
+*.env
+*.env.local
+*.env.*.local
+docker-compose.override.yml
+docker-compose.override.*.yml
+docker-compose.override.*.yaml
+docker-compose.override.yml
+*.pid
+*.sock
+*.swp
+docker-compose.override.yml
+.docker/
+.dockerignore
+
+# =====================
+# Kubernetes / Helm
+# =====================
+.kube/
+*.kubeconfig
+*.yaml
+*.yml
+*.orig
+*.backup
+
+# =====================
+# OS / IDE
+# =====================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# =====================
+# Logs / Misc
+# =====================
+logs/
+*.log
+*.tmp
+*.bak
+*.old
+*.cache

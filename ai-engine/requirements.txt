@@ -1,0 +1,24 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+
+# HTTP requests
+requests==2.32.3
+httpx==0.27.0
+
+# Data handling
+pydantic==2.7.4
+
+# Local model 
+ollama==0.3.3
+
+# Vector DB (for RAG)
+chromadb==0.5.5
+
+# Utilities
+python-dotenv==1.0.1
+
+# Optional (better performance)
+orjson==3.10.6
+
+# Async support
+anyio==4.4.0
