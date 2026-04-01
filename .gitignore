@@ -49,8 +49,6 @@ docker-compose.override.yml
 # =====================
 .kube/
 *.kubeconfig
-*.yaml
-*.yml
 *.orig
 *.backup
 

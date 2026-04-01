@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: ./gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - orchestrator
+
+  orchestrator:
+    build: ./orchestrator
+    ports:
+      - "3001:3000"
+    depends_on:
+      - observability
+      - ai-engine
+
+  observability:
+    build: ./observability-service
+    ports:
+      - "3002:3000"
+
+  ai-engine:
+    build: ./ai-engine
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: ./worker
+    depends_on:
+      - rabbitmq
+    env_file:
+      - ./worker/.env  
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5673:5672"   
+      - "15673:15672" 
