@@ -1,7 +1,7 @@
-// gateway/src/app.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { AskDto } from './dto/ask.dto';
 import * as k8s from '@kubernetes/client-node';
 
 @Injectable()
@@ -22,30 +22,33 @@ export class AppService {
   // ============================
   // AI Orchestrator
   // ============================
-  async ask(question: string) {
+  async ask(dto: AskDto) {
+    const { question, logs, metrics } = dto;
+
     try {
-      this.logger.log(`Forwarding question to orchestrator: ${question}`);
+      this.logger.log(`Forwarding question to AI engine: ${question}`);
 
-      // Fetch logs & metrics from observability service
-      const logsReq = firstValueFrom(this.http.get('http://observability:3002/logs'));
-      const metricsReq = firstValueFrom(this.http.get('http://observability:3002/metrics'));
-
-      const [logs, metrics] = await Promise.all([logsReq, metricsReq]);
+      // Optional: Fetch observability logs/metrics only if not provided in DTO
+      const logsData = logs ?? (await firstValueFrom(this.http.get('http://observability:3000/logs'))).data;
+      const metricsData = metrics ?? (await firstValueFrom(this.http.get('http://observability:3000/metrics'))).data;
 
       const response = await firstValueFrom(
         this.http.post('http://ai-engine:8000/analyze', {
           question,
-          logs: logs.data,
-          metrics: metrics.data,
-        }),
+          logs: logsData,
+          metrics: metricsData,
+        })
       );
 
-      this.logger.log('Received AI reasoning from ai-engine');
+      this.logger.log('Received AI reasoning from AI engine');
       return response.data;
 
     } catch (error: any) {
       this.logger.error('Error calling AI engine', error.message);
-      return { answer: 'Failed to process request', error: error.message };
+      return {
+        answer: 'Failed to process request',
+        error: error.message,
+      };
     }
   }
 

@@ -18,14 +18,13 @@ spec:
     spec:
       containers:
         - name: ai-engine
-          image: ai-engine:latest
+          image: ai-devops-copilot_ai-engine:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:
-            # Point to Ollama service inside cluster
             - name: OLLAMA_HOST
-              value: "http://ollama.ai-assistant.svc.cluster.local:11434"
+              value: "http://ollama:11434"
 
 ---
 
@@ -68,6 +67,7 @@ spec:
       containers:
         - name: ollama
           image: ollama/ollama:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 11434
 

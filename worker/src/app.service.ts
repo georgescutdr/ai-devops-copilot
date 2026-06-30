@@ -13,12 +13,14 @@ export class AppService {
   private k8sClient: k8s.CoreV1Api;
 
   constructor(private readonly http: HttpService) {
-    // Initialize Kubernetes client
     const kc = new k8s.KubeConfig();
-    kc.loadFromDefault(); // ~/.kube/config or in-cluster config
-    this.k8sClient = kc.makeApiClient(k8s.CoreV1Api);
-
-    this.logger.log('Kubernetes client initialized');
+    try {
+      kc.loadFromDefault(); // ~/.kube/config or in-cluster
+      this.k8sClient = kc.makeApiClient(k8s.CoreV1Api);
+      this.logger.log('Kubernetes client initialized');
+    } catch (err: any) {
+      this.logger.error('Failed to initialize Kubernetes client', err.message);
+    }
   }
 
   // ============================
@@ -29,27 +31,34 @@ export class AppService {
     try {
       this.logger.log(`Fetching logs for container: ${container}`);
 
-      const { stdout } = await execAsync(
-        `kubectl logs deployment/${container} -n ai-assistant --tail=50`
-      );
+      // Correct usage: listNamespacedPod expects an options object
+      const pods = await this.k8sClient.listNamespacedPod({
+        namespace: 'ai-assistant',
+        labelSelector: `app=${container}`,
+      });
 
-      return { container, logs: stdout };
+      const runningPod = pods.items.find(p => p.status?.phase === 'Running');
+      if (!runningPod) {
+        this.logger.warn(`No running pod found for ${container}`);
+        return { container, logs: 'No running pod logs available' };
+      }
+
+      const podName = runningPod.metadata?.name!;
+      const { stdout } = await execAsync(`kubectl logs ${podName} -n ai-assistant --tail=50`);
+      return { container, logs: stdout || 'No logs available' };
     } catch (err: any) {
-      this.logger.error('Failed to fetch logs', err.message);
-      return { container, logs: '', error: err.message };
+      this.logger.error(`Failed to fetch logs for ${container}`, err.message);
+      return { container, logs: 'Error fetching logs', error: err.message };
     }
   }
 
   async getMetrics() {
     try {
-      const response = await firstValueFrom(
-        this.http.get('http://observability:3002/metrics')
-      );
-
-      return response.data;
+      const response = await firstValueFrom(this.http.get('http://observability:3002/metrics'));
+      return response.data || { cpu: 0, memory: 0 };
     } catch (err: any) {
       this.logger.error('Failed to fetch metrics', err.message);
-      return { error: err.message };
+      return { cpu: 0, memory: 0, error: err.message };
     }
   }
 
@@ -59,19 +68,20 @@ export class AppService {
 
   async analyze(question: string) {
     try {
-      this.logger.log(`Sending question to AI engine: ${question}`);
+      this.logger.log(`Analyzing question: ${question}`);
 
-      const [logs, metrics] = await Promise.all([
-        this.getLogs(),
-        this.getMetrics(),
-      ]);
+      // Automatically get runtime data
+      const [logs, metrics] = await Promise.all([this.getLogs(), this.getMetrics()]);
+
+      // Build payload for AI engine
+      const payload = {
+        question,
+        logs: logs.logs || 'No logs available',
+        metrics: metrics || { cpu: 0, memory: 0 },
+      };
 
       const response = await firstValueFrom(
-        this.http.post('http://ai-engine:8000/analyze', {
-          question,
-          logs: logs.logs,
-          metrics,
-        }),
+        this.http.post('http://ai-engine:8000/analyze', payload),
       );
 
       this.logger.log('Received AI analysis result');
@@ -86,14 +96,11 @@ export class AppService {
   // Kubernetes Operations
   // ============================
 
-  async listPods(namespace = 'default') {
+  async listPods(namespace = 'ai-assistant') {
     try {
       this.logger.log(`Listing pods in namespace: ${namespace}`);
 
-      const res = await this.k8sClient.listNamespacedPod({
-        namespace,
-      });
-
+      const res = await this.k8sClient.listNamespacedPod({ namespace });
       return res.items.map(p => ({
         name: p.metadata?.name ?? 'unknown',
         status: p.status?.phase ?? 'unknown',
@@ -110,14 +117,10 @@ export class AppService {
     try {
       this.logger.log(`Restarting pod: ${podName} in namespace: ${namespace}`);
 
-      await this.k8sClient.deleteNamespacedPod({
-        name: podName,
-        namespace,
-      });
+      // Correct usage: deleteNamespacedPod expects an options object
+      await this.k8sClient.deleteNamespacedPod({ name: podName, namespace });
 
-      return {
-        message: `Pod ${podName} deleted; a new pod will be scheduled automatically.`,
-      };
+      return { message: `Pod ${podName} deleted; a new pod will be scheduled automatically.` };
     } catch (err: any) {
       this.logger.error(`Failed to restart pod ${podName}`, err.message);
       return { error: err.message };
@@ -125,28 +128,24 @@ export class AppService {
   }
 
   // ============================
-  // Background job processor (RabbitMQ)
+  // Background Job Processor (RabbitMQ)
   // ============================
 
   async processTask(task: any) {
     this.logger.log(`Processing task: ${JSON.stringify(task)}`);
 
     try {
-      if (task.type === 'ai-analysis') {
-        const result = await this.analyze(task.question);
-        this.logger.log(`AI result: ${JSON.stringify(result)}`);
-        return result;
+      switch (task.type) {
+        case 'ai-analysis':
+          return await this.analyze(task.question);
+
+        case 'restart-pod':
+          return await this.restartPod(task.namespace, task.podName);
+
+        default:
+          this.logger.warn(`Unknown task type: ${task.type}`);
+          return { error: 'Unknown task type' };
       }
-
-      if (task.type === 'restart-pod') {
-        const result = await this.restartPod(task.namespace, task.podName);
-        this.logger.log(`Restart result: ${JSON.stringify(result)}`);
-        return result;
-      }
-
-      this.logger.warn(`Unknown task type: ${task.type}`);
-      return { error: 'Unknown task type' };
-
     } catch (err: any) {
       this.logger.error('Task processing failed', err.message);
       return { error: err.message };

@@ -21,7 +21,8 @@ export class AppController {
   @ApiResponse({ status: 200, description: 'AI response', type: AskResponseDto })
   async ask(@Body() dto: AskDto): Promise<AskResponseDto> {
     this.logger.log(`Received AI question: ${dto.question}`);
-    return this.appService.ask(dto.question);
+    console.log('Incoming body:', dto);
+    return this.appService.ask(dto); // pass full DTO
   }
 
   // ============================

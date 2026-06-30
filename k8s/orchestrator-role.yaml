@@ -1,0 +1,9 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orchestrator-role
+  namespace: ai-assistant
+rules:
+  - apiGroups: ["", "apps"]   # "" = core API, "apps" = deployments
+    resources: ["pods", "deployments"]
+    verbs: ["get", "list", "watch", "delete"]

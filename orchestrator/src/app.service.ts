@@ -19,12 +19,12 @@ export class AppService {
       // Fetch logs + metrics in parallel (faster)
       const [logsRes, metricsRes] = await Promise.all([
         firstValueFrom(
-          this.http.get('http://observability:3002/logs', {
+          this.http.get('http://observability:3000/logs', {
             timeout: 3000,
           }),
         ),
         firstValueFrom(
-          this.http.get('http://observability:3002/metrics', {
+          this.http.get('http://observability:3000/metrics', {
             timeout: 3000,
           }),
         ),

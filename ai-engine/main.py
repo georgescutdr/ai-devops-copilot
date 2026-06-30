@@ -1,5 +1,5 @@
 # main.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 import os
 import datetime
@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 # -----------------------------
 # Environment
 # -----------------------------
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "ai-assistant")
 AUTO_RESTART_ENABLED = os.environ.get("AUTO_RESTART_ENABLED", "true").lower() == "true"
 DEFAULT_DEPLOYMENT = os.environ.get("DEFAULT_DEPLOYMENT", "worker")
@@ -51,25 +51,40 @@ Provide structured JSON response with fields:
 - issue (string)
 - fix (string)
 - severity (low/medium/high)
+
 Return ONLY JSON.
 """
+
     try:
         response = requests.post(
-            f"{OLLAMA_HOST}/v1/generate",
+            f"{OLLAMA_HOST}/api/generate",  
             json={
-                "model": "llama2",   # replace with your Ollama model
+                "model": "phi3",          
                 "prompt": prompt,
-                "temperature": 0.2,
-                "max_tokens": 500
+                "stream": False
             },
-            timeout=30
+            timeout=60
         )
-        response.raise_for_status()
-        completion = response.json().get("completion", "")
 
-        # Parse Ollama JSON safely
+        response.raise_for_status()
+
+        data = response.json()
+        completion = data.get("response")
+
+        # ✅ Handle empty response
+        if not completion:
+            logger.error(f"Empty response from Ollama: {data}")
+            return {"error": "Empty response from Ollama", "details": data}
+
+        # ✅ Clean markdown formatting if present
+        cleaned = completion.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```")[1]
+            cleaned = cleaned.replace("json", "").strip()
+
+        # ✅ Parse JSON safely
         try:
-            ai_result = json.loads(completion)
+            ai_result = json.loads(cleaned)
         except json.JSONDecodeError:
             logger.warning("Failed to parse Ollama JSON, returning raw text")
             ai_result = {"raw": completion}
@@ -86,6 +101,7 @@ Return ONLY JSON.
 def restart_k8s_deployment(deployment: str, namespace: str = K8S_NAMESPACE):
     try:
         now = datetime.datetime.utcnow().isoformat()
+
         subprocess.run([
             "kubectl", "patch", "deployment", deployment,
             "-n", namespace,
@@ -93,8 +109,10 @@ def restart_k8s_deployment(deployment: str, namespace: str = K8S_NAMESPACE):
             "-p",
             f'{{"spec":{{"template":{{"metadata":{{"annotations":{{"kubectl.kubernetes.io/restartedAt":"{now}"}}}}}}}}}}'
         ], check=True)
+
         logger.info(f"Deployment {deployment} restarted at {now}")
         return {"success": True, "message": f"{deployment} restarted"}
+
     except Exception as e:
         logger.error(f"Failed to restart deployment: {e}")
         return {"success": False, "error": str(e)}
@@ -104,13 +122,18 @@ def restart_k8s_deployment(deployment: str, namespace: str = K8S_NAMESPACE):
 # -----------------------------
 @app.post("/analyze")
 async def analyze(data: AnalyzeRequest):
-    # AI reasoning
+
+    # 🧠 AI reasoning
     ai_result = analyze_with_ollama(data.question, data.logs, data.metrics)
 
-    # Determine severity
-    severity = ai_result.get("severity", "low").lower()
+    # ✅ Safe severity handling
+    severity = "low"
+    if isinstance(ai_result, dict):
+        severity = ai_result.get("severity", "low").lower()
+
     auto_restart_result = None
 
+    # 🔁 Auto-restart logic
     if AUTO_RESTART_ENABLED and severity == "high":
         logger.info("High severity detected, attempting auto-restart...")
         auto_restart_result = restart_k8s_deployment(DEFAULT_DEPLOYMENT, K8S_NAMESPACE)

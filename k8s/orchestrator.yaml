@@ -1,7 +1,50 @@
+# =========================
+# ServiceAccount
+# =========================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orchestrator-sa
+  namespace: ai-assistant
+---
+# =========================
+# Role for orchestrator
+# =========================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orchestrator-role
+  namespace: ai-assistant
+rules:
+  - apiGroups: ["", "apps"]   # core and apps API
+    resources: ["pods", "deployments"]
+    verbs: ["get", "list", "watch", "delete"]
+---
+# =========================
+# RoleBinding
+# =========================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: orchestrator-rb
+  namespace: ai-assistant
+subjects:
+  - kind: ServiceAccount
+    name: orchestrator-sa
+    namespace: ai-assistant
+roleRef:
+  kind: Role
+  name: orchestrator-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# =========================
+# Deployment
+# =========================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: orchestrator
+  namespace: ai-assistant
 spec:
   replicas: 1
   selector:
@@ -12,28 +55,34 @@ spec:
       labels:
         app: orchestrator
     spec:
+      serviceAccountName: orchestrator-sa   # use the new ServiceAccount
       containers:
         - name: orchestrator
           image: ai-devops-copilot_orchestrator:latest
           imagePullPolicy: IfNotPresent
-          envFrom:
-            - configMapRef:
-                name: orchestrator-config
           ports:
             - containerPort: 3000
 ---
+# =========================
+# ConfigMap
+# =========================
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: orchestrator-config
+  namespace: ai-assistant
 data:
-  OBSERVABILITY_URL: "http://observability:3000"
-  AI_ENGINE_URL: "http://ai-engine:8000"
+  OBSERVABILITY_URL: "http://observability.ai-assistant.svc.cluster.local:3000"
+  AI_ENGINE_URL: "http://ai-engine.ai-assistant.svc.cluster.local:8000"
 ---
+# =========================
+# Service
+# =========================
 apiVersion: v1
 kind: Service
 metadata:
   name: orchestrator
+  namespace: ai-assistant
 spec:
   selector:
     app: orchestrator
